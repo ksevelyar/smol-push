@@ -25,7 +25,6 @@
 ## Backpressure
 * The system applies backpressure when internal queues are full.
 * Under overload, new pushes may be rejected with HTTP 429.
-* Already accepted pushes are never dropped.
 
 ## Metrics (Prometheus)
 * `smol_push_queue_depth{platform="APNS|FCM"}`: Gauge of currently pending pushes waiting to be sent or retried.
@@ -40,5 +39,6 @@
 | `MAX_PUSHES_PER_CONNECTION_PER_SECOND` | Maximum pushes per second allowed per HTTP/2 connection to avoid provider throttling. | `100` |
 | `MAX_RETRY_ATTEMPTS` | Maximum number of retry attempts per push for transient errors. | `3` |
 | `MAX_QUEUED_PUSHES` | Maximum number of pending pushes held in the system before HTTP 429 is returned to new requests. | `10000` |
+| `ANDROID_ADDRESS` | URL for the Android (FCM) HTTP/2 endpoint. Use `http://` for cleartext h2c (dev/testing) or `https://` for production. | `http://127.0.0.1:9099` |
 | `RETRY_BASE_DELAY_MS` | Initial delay in milliseconds before the first retry attempt. | `1000` |
 | `RETRY_MAX_DELAY_MS` | Maximum cap in milliseconds for the exponential backoff delay. | `60000` |

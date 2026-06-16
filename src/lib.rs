@@ -1,3 +1,5 @@
+pub mod delivery;
+pub mod queries;
 pub mod writer;
 
 use axum::{
@@ -7,62 +9,56 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
+use delivery::DeliveryConfig;
+use queries::{NewPush, Platform};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::{mpsc, oneshot};
-use writer::{Push, PushCmd};
+use tokio::sync::{Notify, mpsc, oneshot};
+use writer::PushCommand;
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Platform {
-    Apple = 0,
-    Android = 1,
-}
-
-impl Platform {
-    pub fn as_db_int(&self) -> i32 {
-        *self as i32
-    }
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct PushRequest {
     pub platform: Platform,
     pub r#type: String,
     pub text: String,
+    pub token: Option<String>,
+    pub title: Option<String>,
 }
 
 pub struct AppState {
-    pub writer_tx: mpsc::Sender<PushCmd>,
-    pub pending: Arc<AtomicUsize>,
+    pub writer_sender: mpsc::Sender<PushCommand>,
     pub api_key: Option<String>,
-    pub max_queued: usize,
 }
 
 pub fn app_from_state(state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/pushes", post(post_push))
+        .route("/pushes", post(create_push))
         .with_state(state)
 }
 
-pub async fn build_app(pool: SqlitePool, api_key: Option<String>, max_queued: usize) -> Router {
-    let (writer_tx, writer_rx) = mpsc::channel(max_queued.max(1));
-    let pending = Arc::new(AtomicUsize::new(0));
-    writer::spawn(writer_rx, pool, Arc::clone(&pending));
+pub async fn build_app(
+    pool: SqlitePool,
+    api_key: Option<String>,
+    max_queued: usize,
+    delivery_config: DeliveryConfig,
+) -> Router {
+    let (writer_sender, writer_receiver) = mpsc::channel(max_queued.max(1));
+    let notify = Arc::new(Notify::new());
+
+    writer::spawn(writer_receiver, pool.clone(), Arc::clone(&notify));
+
+    delivery::spawn(pool, notify, delivery_config);
 
     let state = Arc::new(AppState {
-        writer_tx,
-        pending,
+        writer_sender,
         api_key,
-        max_queued,
     });
 
     app_from_state(state)
 }
 
-pub async fn post_push(
+pub async fn create_push(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(body): Json<PushRequest>,
@@ -77,24 +73,26 @@ pub async fn post_push(
         }
     }
 
-    if state.pending.load(Ordering::SeqCst) >= state.max_queued {
-        return StatusCode::TOO_MANY_REQUESTS;
-    }
-
-    let push = Push {
+    let push = NewPush {
         id: uuid::Uuid::new_v4().to_string(),
-        platform: body.platform.as_db_int(),
+        platform: body.platform,
         r#type: body.r#type,
         text: body.text,
+        token: body.token.unwrap_or_default(),
+        title: body.title.unwrap_or_default(),
     };
 
-    let (ack_tx, ack_rx) = oneshot::channel();
-    let cmd = PushCmd { push, ack: ack_tx };
+    let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
+    let command = PushCommand {
+        payload: push,
+        acknowledgement: acknowledgement_sender,
+    };
 
-    match state.writer_tx.try_send(cmd) {
+    match state.writer_sender.try_send(command) {
         Ok(_) => {
-            state.pending.fetch_add(1, Ordering::SeqCst);
-            let _ = ack_rx.await;
+            if acknowledgement_receiver.await.is_err() {
+                tracing::error!("writer dropped the acknowledgement channel");
+            }
             StatusCode::OK
         }
         Err(mpsc::error::TrySendError::Full(_)) => StatusCode::TOO_MANY_REQUESTS,

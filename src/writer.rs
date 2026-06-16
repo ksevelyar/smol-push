@@ -1,51 +1,48 @@
+use crate::queries::{self, NewPush};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 
-pub struct Push {
-    pub id: String,
-    pub platform: i32,
-    pub r#type: String,
-    pub text: String,
+pub struct PushCommand {
+    pub payload: NewPush,
+    pub acknowledgement: oneshot::Sender<()>,
 }
 
-pub struct PushCmd {
-    pub push: Push,
-    pub ack: oneshot::Sender<()>,
-}
-
-pub fn spawn(mut rx: mpsc::Receiver<PushCmd>, pool: SqlitePool, pending: Arc<AtomicUsize>) {
+pub fn spawn(mut receiver: mpsc::Receiver<PushCommand>, pool: SqlitePool, notify: Arc<Notify>) {
     tokio::spawn(async move {
         loop {
-            let batch = collect(&mut rx, 100, Duration::from_millis(5)).await;
+            let batch = collect(&mut receiver, 100, Duration::from_millis(5)).await;
             if batch.is_empty() {
                 continue;
             }
 
             flush(&batch, &pool).await;
+            notify.notify_one();
 
-            for cmd in batch {
-                let _ = cmd.ack.send(());
-                pending.fetch_sub(1, Ordering::SeqCst);
+            for command in batch {
+                let _ = command.acknowledgement.send(());
             }
         }
     });
 }
 
-async fn collect(rx: &mut mpsc::Receiver<PushCmd>, max: usize, timeout: Duration) -> Vec<PushCmd> {
+async fn collect(
+    receiver: &mut mpsc::Receiver<PushCommand>,
+    maximum: usize,
+    timeout: Duration,
+) -> Vec<PushCommand> {
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut batch = Vec::with_capacity(max);
+    let mut batch = Vec::with_capacity(maximum);
 
-    match tokio::time::timeout(timeout, rx.recv()).await {
-        Ok(Some(cmd)) => batch.push(cmd),
+    match tokio::time::timeout(timeout, receiver.recv()).await {
+        Ok(Some(command)) => batch.push(command),
         _ => return batch,
     }
 
-    while batch.len() < max && tokio::time::Instant::now() < deadline {
-        match rx.try_recv() {
-            Ok(cmd) => batch.push(cmd),
+    while batch.len() < maximum && tokio::time::Instant::now() < deadline {
+        match receiver.try_recv() {
+            Ok(command) => batch.push(command),
             Err(_) => break,
         }
     }
@@ -53,23 +50,7 @@ async fn collect(rx: &mut mpsc::Receiver<PushCmd>, max: usize, timeout: Duration
     batch
 }
 
-async fn flush(batch: &[PushCmd], pool: &SqlitePool) {
-    let params: Vec<String> = batch.iter().map(|_| "(?, ?, ?, ?)".to_string()).collect();
-    let sql = format!(
-        "INSERT INTO pushes (id, platform, type, text) VALUES {}",
-        params.join(", ")
-    );
-
-    let mut query = sqlx::query(&sql);
-    for cmd in batch {
-        query = query
-            .bind(&cmd.push.id)
-            .bind(cmd.push.platform)
-            .bind(&cmd.push.r#type)
-            .bind(&cmd.push.text);
-    }
-
-    if let Err(e) = query.execute(pool).await {
-        tracing::error!("flush: {e}");
-    }
+async fn flush(batch: &[PushCommand], pool: &SqlitePool) {
+    let payloads: Vec<&NewPush> = batch.iter().map(|c| &c.payload).collect();
+    queries::insert_batch(&payloads, pool).await;
 }

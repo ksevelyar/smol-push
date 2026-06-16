@@ -51,6 +51,14 @@
             ];
 
             PUSH_API_KEY = "dev-key";
+            ANDROID_API_KEY = "test-key";
+            ANDROID_ADDRESS = "http://127.0.0.1:9099";
+            MAX_QUEUED_PUSHES = "10000";
+            MAX_CONNECTIONS_PER_PROVIDER = "1";
+            MAX_PUSHES_PER_CONNECTION_PER_SECOND = "100";
+            MAX_RETRY_ATTEMPTS = "3";
+            RETRY_BASE_DELAY_MS = "1000";
+            RETRY_MAX_DELAY_MS = "60000";
             RUST_LOG = "info";
           };
         }
