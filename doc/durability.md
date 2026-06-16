@@ -1,7 +1,7 @@
 # Durability
 
-## Why SQLite WAL
-SQLite in WAL mode lets us read and write concurrently without blocking. Writers append to a WAL file; readers keep going. Handles ~50K writes/sec on modern SSDs.
+## Why [SQLite Write-Ahead Logging](https://sqlite.org/wal.html)
+SQLite in WAL mode lets read and write concurrently.
 
 ## Ingestion
 * Handler receives POST /pushes with JSON body

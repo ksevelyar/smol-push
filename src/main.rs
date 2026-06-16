@@ -1,4 +1,10 @@
+use smol_push::delivery::DeliveryConfig;
+use smol_push::queries;
 use sqlx::SqlitePool;
+
+fn environment_variable(key: &str) -> String {
+    std::env::var(key).expect("missing env var, set in flake.nix devShell")
+}
 
 #[tokio::main]
 async fn main() {
@@ -19,24 +25,28 @@ async fn main() {
 
     sqlx::migrate!().run(&pool).await.expect("run migration");
 
-    sqlx::query("DELETE FROM pushes WHERE inserted_at < datetime('now', '-30 minutes')")
-        .execute(&pool)
-        .await
-        .expect("purge old pushes");
+    queries::purge_old_pushes(&pool).await;
 
-    let max_queued: usize = std::env::var("MAX_QUEUED_PUSHES")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10_000);
+    let apple_key = Some(environment_variable("PUSH_API_KEY"));
 
-    let api_key = std::env::var("PUSH_API_KEY").ok();
+    let configuration = DeliveryConfig {
+        android_address: environment_variable("ANDROID_ADDRESS"),
+        android_api_key: environment_variable("ANDROID_API_KEY"),
+        max_connections: environment_variable("MAX_CONNECTIONS_PER_PROVIDER")
+            .parse()
+            .unwrap(),
+        max_retry_attempts: environment_variable("MAX_RETRY_ATTEMPTS").parse().unwrap(),
+        retry_base_delay_milliseconds: environment_variable("RETRY_BASE_DELAY_MS").parse().unwrap(),
+        retry_max_delay_milliseconds: environment_variable("RETRY_MAX_DELAY_MS").parse().unwrap(),
+    };
 
-    let app = smol_push::build_app(pool, api_key, max_queued).await;
+    let maximum_queued: usize = environment_variable("MAX_QUEUED_PUSHES").parse().unwrap();
+    let application = smol_push::build_app(pool, apple_key, maximum_queued, configuration).await;
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:4004")
         .await
         .expect("bind listener");
 
     tracing::info!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, application).await.unwrap();
 }
