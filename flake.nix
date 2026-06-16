@@ -33,6 +33,7 @@
           devShells.default = mkShell {
             buildInputs = [
               cargo-watch
+              sqlx-cli
               rust-analyzer
               (rust-bin.stable.latest.default.override {
                 extensions = ["rust-src"];
@@ -49,6 +50,7 @@
               '')
             ];
 
+            PUSH_API_KEY = "dev-key";
             RUST_LOG = "info";
           };
         }
