@@ -18,15 +18,38 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+        cargoToml = pkgs.lib.importTOML ./Cargo.toml;
       in
         with pkgs; {
+          packages.default = pkgs.rustPlatform.buildRustPackage {
+            pname = cargoToml.package.name;
+            version = cargoToml.package.version;
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+
+            doCheck = false;
+          };
+
           devShells.default = mkShell {
             buildInputs = [
               cargo-watch
-              # pkg-config
               rust-analyzer
-              rust-bin.stable.latest.default
+              (rust-bin.stable.latest.default.override {
+                extensions = ["rust-src"];
+              })
+              tokio-console
+
+              (writeShellScriptBin "ci" ''
+                set -euo pipefail
+                cargo fmt --all -- --check --color always
+                cargo clippy --all-features --workspace -- -D warnings
+                cargo test
+
+                nix build
+              '')
             ];
+
+            RUST_LOG = "info";
           };
         }
     );
