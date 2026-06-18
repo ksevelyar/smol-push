@@ -37,7 +37,7 @@ pub fn app_from_state(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-pub async fn build_app(
+pub fn build_app(
     pool: SqlitePool,
     api_key: Option<String>,
     max_queued: usize,
@@ -89,7 +89,7 @@ pub async fn create_push(
     };
 
     match state.writer_sender.try_send(command) {
-        Ok(_) => {
+        Ok(()) => {
             if acknowledgement_receiver.await.is_err() {
                 tracing::error!("writer dropped the acknowledgement channel");
             }

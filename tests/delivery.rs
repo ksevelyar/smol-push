@@ -40,7 +40,7 @@ async fn run_delivery_test(
         retry_max_delay_milliseconds: 1,
     };
 
-    let app = smol_push::build_app(pool, None, 100, config).await;
+    let app = smol_push::build_app(pool, None, 100, config);
 
     let id = if initial_retry_count > 0 {
         "t1".to_string()
@@ -75,11 +75,9 @@ async fn run_delivery_test(
                     .fetch_optional(&monitor_pool)
                     .await
                     .unwrap()
-            {
-                if status == expected_status as i32 && retry == expected_retry_count {
+                && status == expected_status as i32 && retry == expected_retry_count {
                     return;
                 }
-            }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     })

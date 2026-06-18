@@ -41,7 +41,7 @@ async fn main() {
     };
 
     let maximum_queued: usize = environment_variable("MAX_QUEUED_PUSHES").parse().unwrap();
-    let application = smol_push::build_app(pool, apple_key, maximum_queued, configuration).await;
+    let application = smol_push::build_app(pool, apple_key, maximum_queued, configuration);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:4004")
         .await

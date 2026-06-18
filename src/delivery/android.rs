@@ -77,7 +77,11 @@ impl AndroidConnection {
 
         let (sender, http2_connection) = tokio::time::timeout(
             Duration::from_secs(10),
-            Builder::new(TokioExecutor::new()).handshake(io),
+            Builder::new(TokioExecutor::new())
+                .timer(hyper_util::rt::TokioTimer::new())
+                .keep_alive_interval(Duration::from_secs(10))
+                .keep_alive_while_idle(true)
+                .handshake(io),
         )
         .await
         .map_err(|_| AndroidError::Timeout("h2 handshake"))?
@@ -150,20 +154,18 @@ pub async fn send_notification(
     let body = Full::new(body_bytes);
     let auth = format!("Bearer {api_key}");
 
-    let request = match Request::builder()
+    let Ok(request) = Request::builder()
         .method("POST")
         .uri("/")
         .header("content-type", "application/json")
         .header("authorization", &auth)
         .body(body)
-    {
-        Ok(req) => req,
-        Err(_) => return PushResult::RecoverableError,
+    else {
+        return PushResult::RecoverableError;
     };
 
-    let response = match sender.send_request(request).await {
-        Ok(response) => response,
-        Err(_) => return PushResult::RecoverableError,
+    let Ok(response) = sender.send_request(request).await else {
+        return PushResult::RecoverableError;
     };
 
     let status = response.status();

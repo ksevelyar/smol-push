@@ -10,6 +10,8 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn benchmark_delivery_throughput() {
+    const TOTAL_REQUESTS: usize = 10_000;
+
     let fcm_port = common::spawn_mock_fcm(StatusCode::OK).await;
     tokio::time::sleep(Duration::from_millis(1)).await;
 
@@ -25,9 +27,8 @@ async fn benchmark_delivery_throughput() {
         retry_max_delay_milliseconds: 1,
     };
 
-    let app = smol_push::build_app(pool, None, 100_000, configuration).await;
+    let app = smol_push::build_app(pool, None, 100_000, configuration);
 
-    const TOTAL_REQUESTS: usize = 10_000;
     let start = Instant::now();
 
     let mut handles = Vec::with_capacity(TOTAL_REQUESTS);
@@ -67,7 +68,7 @@ async fn benchmark_delivery_throughput() {
     }
 
     let total = start.elapsed();
-    let delivery = total - ingest;
+    let delivery = total.checked_sub(ingest).unwrap();
 
     println!();
     println!("=== BENCHMARK ===");

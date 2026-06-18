@@ -24,8 +24,7 @@ async fn accept_push() {
         Some("key".into()),
         100,
         DeliveryConfig::default(),
-    )
-    .await;
+    );
     let status = application
         .oneshot(request(
             "key",
@@ -44,8 +43,7 @@ async fn reject_unauthorized() {
         Some("key".into()),
         100,
         DeliveryConfig::default(),
-    )
-    .await;
+    );
     let status = application
         .oneshot(request(
             "wrong",
@@ -64,10 +62,9 @@ async fn reject_malformed_body() {
         Some("key".into()),
         100,
         DeliveryConfig::default(),
-    )
-    .await;
+    );
     let status = application
-        .oneshot(request("key", r#"{}"#))
+        .oneshot(request("key", r"{}"))
         .await
         .unwrap()
         .status();
