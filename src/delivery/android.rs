@@ -3,6 +3,7 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Request;
 use hyper::client::conn::http2::Builder;
+use hyper::rt::Timer;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::fmt;
 use std::sync::Arc;
@@ -77,7 +78,11 @@ impl AndroidConnection {
 
         let (sender, http2_connection) = tokio::time::timeout(
             Duration::from_secs(10),
-            Builder::new(TokioExecutor::new()).handshake(io),
+            Builder::new(TokioExecutor::new())
+                .timer(hyper_util::rt::TokioTimer::new())
+                .keep_alive_interval(Duration::from_secs(10))
+                .keep_alive_while_idle(true)
+                .handshake(io),
         )
         .await
         .map_err(|_| AndroidError::Timeout("h2 handshake"))?
