@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Notify;
 
-const BATCH_SIZE: i32 = 100;
+const BATCH_SIZE: i32 = 1000;
 
 pub struct DeliveryConfig {
     pub max_connections: usize, // TODO: implement connection pool

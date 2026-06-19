@@ -26,5 +26,5 @@ divan = "0.1"
 tower = { version = "0.5", features = ["util"] }
 
 [[bench]]
-name = "benchmark"
+name = "end-to-end"
 harness = false
