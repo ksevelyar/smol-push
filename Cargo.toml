@@ -22,4 +22,9 @@ tokio-rustls = "0.26.4"
 webpki-roots = "0.26"
 
 [dev-dependencies]
+divan = "0.1"
 tower = { version = "0.5", features = ["util"] }
+
+[[bench]]
+name = "benchmark"
+harness = false
