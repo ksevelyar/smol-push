@@ -8,13 +8,15 @@ axum = "0.8.9"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "tracing", "sync", "time", "net"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 console-subscriber = "0.5.0"
+tracing-chrome = "0.7"
 uuid = { version = "1", features = ["v4"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate"] }
 hyper = { version = "1", features = ["http2", "client", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 bytes = "1"
 futures-util = "0.3.32"
@@ -23,8 +25,15 @@ webpki-roots = "0.26"
 
 [dev-dependencies]
 divan = "0.1"
-tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "profile"
+path = "src/bin/profile.rs"
+
+[[bin]]
+name = "explain"
+path = "src/bin/explain.rs"
 
 [[bench]]
-name = "end-to-end"
+name = "throughput"
 harness = false

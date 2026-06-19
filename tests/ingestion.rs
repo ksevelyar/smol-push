@@ -1,8 +1,7 @@
-mod common;
-
 use axum::body::Body;
 use axum::http::Request;
 use smol_push::delivery::DeliveryConfig;
+use smol_push::utils::TestDatabase;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower::ServiceExt;
@@ -19,8 +18,9 @@ fn request(api_key: &str, body: &str) -> Request<Body> {
 
 #[tokio::test]
 async fn accept_push() {
+    let database = TestDatabase::new().await;
     let application = smol_push::build_app(
-        common::create_test_database().await,
+        database.pool().clone(),
         Some("key".into()),
         100,
         DeliveryConfig::default(),
@@ -38,8 +38,9 @@ async fn accept_push() {
 
 #[tokio::test]
 async fn reject_unauthorized() {
+    let database = TestDatabase::new().await;
     let application = smol_push::build_app(
-        common::create_test_database().await,
+        database.pool().clone(),
         Some("key".into()),
         100,
         DeliveryConfig::default(),
@@ -57,8 +58,9 @@ async fn reject_unauthorized() {
 
 #[tokio::test]
 async fn reject_malformed_body() {
+    let database = TestDatabase::new().await;
     let application = smol_push::build_app(
-        common::create_test_database().await,
+        database.pool().clone(),
         Some("key".into()),
         100,
         DeliveryConfig::default(),

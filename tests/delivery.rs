@@ -1,10 +1,9 @@
-mod common;
-
 use axum::body::Body;
 use axum::http::Request;
 use hyper::StatusCode;
 use smol_push::delivery::DeliveryConfig;
 use smol_push::queries::PushStatus;
+use smol_push::utils::{TestDatabase, spawn_mock_fcm};
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -15,7 +14,8 @@ async fn run_delivery_test(
     initial_retry_count: i32,
     max_retries: i32,
 ) {
-    let pool = common::create_test_database().await;
+    let database = TestDatabase::new().await;
+    let pool = database.pool().clone();
     let monitor_pool = pool.clone();
     if initial_retry_count > 0 {
         sqlx::query(
@@ -28,13 +28,14 @@ async fn run_delivery_test(
         .unwrap();
     }
 
-    let fcm_port = common::spawn_mock_fcm(mock_status).await;
+    let fcm_port = spawn_mock_fcm(mock_status).await;
     tokio::time::sleep(Duration::from_millis(1)).await;
 
     let config = DeliveryConfig {
         android_address: format!("http://127.0.0.1:{fcm_port}"),
         android_api_key: "test-key".into(),
         max_connections: 1,
+        max_concurrent_streams: 100,
         max_retry_attempts: max_retries as u8,
         retry_base_delay_milliseconds: 1,
         retry_max_delay_milliseconds: 1,

@@ -35,6 +35,9 @@ async fn main() {
         max_connections: environment_variable("MAX_CONNECTIONS_PER_PROVIDER")
             .parse()
             .unwrap(),
+        max_concurrent_streams: environment_variable("MAX_CONCURRENT_STREAMS")
+            .parse()
+            .unwrap(),
         max_retry_attempts: environment_variable("MAX_RETRY_ATTEMPTS").parse().unwrap(),
         retry_base_delay_milliseconds: environment_variable("RETRY_BASE_DELAY_MS").parse().unwrap(),
         retry_max_delay_milliseconds: environment_variable("RETRY_MAX_DELAY_MS").parse().unwrap(),
