@@ -1,5 +1,6 @@
 use sqlx::{QueryBuilder, SqlitePool};
 
+
 #[derive(serde::Deserialize, sqlx::Type, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 #[repr(i32)]
@@ -14,6 +15,7 @@ pub enum PushStatus {
     Pending = 0,
     Delivered = 1,
     Dead = 2,
+    Dispatching = 3,
 }
 
 #[derive(sqlx::FromRow)]
@@ -43,6 +45,34 @@ pub enum PushResult {
     Delivered,
     Fatal,
     RecoverableError,
+}
+
+pub async fn fetch_and_lock(pool: &SqlitePool, platform: Platform, limit: i32) -> Vec<Push> {
+    sqlx::query_as::<_, Push>(
+        "UPDATE pushes SET status = ? WHERE id IN (\
+            SELECT id FROM pushes WHERE platform = ? AND status = ? \
+            AND (next_retry_at IS NULL OR next_retry_at <= CAST(strftime('%s', 'now') AS INTEGER) * 1000) \
+            ORDER BY inserted_at ASC LIMIT ?\
+        ) RETURNING *",
+    )
+    .bind(PushStatus::Dispatching)
+    .bind(platform)
+    .bind(PushStatus::Pending)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
+pub async fn reset_stale(pool: &SqlitePool) {
+    if let Err(e) = sqlx::query("UPDATE pushes SET status = ? WHERE status = ?")
+        .bind(PushStatus::Pending)
+        .bind(PushStatus::Dispatching)
+        .execute(pool)
+        .await
+    {
+        tracing::error!("reset_stale: {e}");
+    }
 }
 
 pub async fn select_pending(pool: &SqlitePool, platform: Platform, limit: i32) -> Vec<Push> {
@@ -78,14 +108,15 @@ pub async fn bulk_mark_status(pool: &SqlitePool, ids: &[String], status: PushSta
 
 pub async fn schedule_retry(pool: &SqlitePool, id: &str, next_retry_at: i64) {
     if let Err(e) = sqlx::query(
-        "UPDATE pushes SET retry_count = retry_count + 1, next_retry_at = ? WHERE id = ?",
+        "UPDATE pushes SET status = ?, retry_count = retry_count + 1, next_retry_at = ? WHERE id = ?",
     )
+    .bind(PushStatus::Pending)
     .bind(next_retry_at)
     .bind(id)
     .execute(pool)
     .await
     {
-        tracing::error!("mark_transient {id}: {e}");
+        tracing::error!("schedule_retry {id}: {e}");
     }
 }
 

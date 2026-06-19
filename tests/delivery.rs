@@ -35,6 +35,7 @@ async fn run_delivery_test(
         android_address: format!("http://127.0.0.1:{fcm_port}"),
         android_api_key: "test-key".into(),
         max_connections: 1,
+        max_concurrent_streams: 100,
         max_retry_attempts: max_retries as u8,
         retry_base_delay_milliseconds: 1,
         retry_max_delay_milliseconds: 1,

@@ -55,6 +55,7 @@
             ANDROID_ADDRESS = "http://127.0.0.1:9099";
             MAX_QUEUED_PUSHES = "10000";
             MAX_CONNECTIONS_PER_PROVIDER = "1";
+            MAX_CONCURRENT_STREAMS = "100";
             MAX_PUSHES_PER_CONNECTION_PER_SECOND = "100";
             MAX_RETRY_ATTEMPTS = "3";
             RETRY_BASE_DELAY_MS = "1000";

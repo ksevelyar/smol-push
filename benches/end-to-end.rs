@@ -19,9 +19,12 @@ fn main() {
     divan::main();
 }
 
-async fn create_test_database() -> SqlitePool {
-    let path = std::env::temp_dir().join(format!("smol_push_{}.db", Uuid::new_v4()));
-    let url = format!("sqlite:{}?mode=rwc", path.display());
+async fn create_test_database() -> (SqlitePool, String) {
+    let path = std::env::temp_dir()
+        .join(format!("smol_push_{}.db", Uuid::new_v4()))
+        .to_string_lossy()
+        .to_string();
+    let url = format!("sqlite:{}?mode=rwc", path);
     let pool = SqlitePool::connect(&url).await.unwrap();
     sqlx::query("PRAGMA journal_mode = WAL;")
         .execute(&pool)
@@ -32,7 +35,13 @@ async fn create_test_database() -> SqlitePool {
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    pool
+    (pool, path)
+}
+
+fn cleanup_database(path: &str) {
+    std::fs::remove_file(path).ok();
+    std::fs::remove_file(format!("{}-wal", path)).ok();
+    std::fs::remove_file(format!("{}-shm", path)).ok();
 }
 
 async fn spawn_mock_fcm(status: StatusCode) -> u16 {
@@ -63,15 +72,15 @@ async fn spawn_mock_fcm(status: StatusCode) -> u16 {
     port
 }
 
-#[divan::bench(sample_count = 10, args = [1000, 10_000, 20_000, 50_000])]
-fn throughput(bencher: Bencher, &pushes_count: &usize) {
+#[divan::bench(sample_count = 10, args = [(1, 1000), (1, 10000), (1, 20000), (1, 50000), (2, 50000), (3, 50000)])]
+fn throughput(bencher: Bencher, &(max_connections, pushes_count): &(usize, usize)) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     bencher
         .counter(ItemsCount::new(pushes_count))
         .bench_local(|| {
             rt.block_on(async {
-                let pool = create_test_database().await;
+                let (pool, db_path) = create_test_database().await;
                 let monitor_pool = pool.clone();
 
                 let fcm_port = spawn_mock_fcm(StatusCode::OK).await;
@@ -79,7 +88,8 @@ fn throughput(bencher: Bencher, &pushes_count: &usize) {
                 let config = DeliveryConfig {
                     android_address: format!("http://127.0.0.1:{fcm_port}"),
                     android_api_key: "test-key".into(),
-                    max_connections: 1,
+                    max_connections,
+                    max_concurrent_streams: 100,
                     max_retry_attempts: 0,
                     retry_base_delay_milliseconds: 1,
                     retry_max_delay_milliseconds: 1,
@@ -127,6 +137,8 @@ fn throughput(bencher: Bencher, &pushes_count: &usize) {
 
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
+
+                cleanup_database(&db_path);
             });
         });
 }
