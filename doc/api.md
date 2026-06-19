@@ -64,16 +64,3 @@ api-key: <key>
 > {"platform":"android","type":"alert","text":"Full"}
 < 429
 ```
-
-### Data Model
-
-| Field          | Type      | Description                       |
-|----------------|-----------|-----------------------------------|
-| id             | uuid (v4) | Server-generated identifier       |
-| platform       | INTEGER   | `0` (Apple) or `1` (Android)      |
-| type           | TEXT      | Notification type                 |
-| text           | TEXT      | Notification body                 |
-| inserted_at    | TEXT      | ISO-8601, set on INSERT           |
-| retry_count    | INTEGER   | Default 0                         |
-| next_retry_at  | TEXT      | Null = ready for delivery         |
-| status         | TEXT      | `"pending"`, `"dead"`, `"delivered"` |
