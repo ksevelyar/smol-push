@@ -1,6 +1,6 @@
 use smol_push::delivery::DeliveryConfig;
 use smol_push::queries;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 fn environment_variable(key: &str) -> String {
     std::env::var(key).expect("missing env var, set in flake.nix devShell")
@@ -10,18 +10,11 @@ fn environment_variable(key: &str) -> String {
 async fn main() {
     console_subscriber::init();
 
-    let pool = SqlitePool::connect("sqlite:pushes.db?mode=rwc")
-        .await
-        .expect("connect to sqlite");
+    let database_url = environment_variable("DATABASE_URL");
 
-    sqlx::query("PRAGMA journal_mode = WAL;")
-        .execute(&pool)
+    let pool = PgPool::connect(&database_url)
         .await
-        .expect("enable WAL");
-    sqlx::query("PRAGMA synchronous = NORMAL;")
-        .execute(&pool)
-        .await
-        .expect("set synchronous mode");
+        .expect("connect to postgres");
 
     sqlx::migrate!().run(&pool).await.expect("run migration");
 

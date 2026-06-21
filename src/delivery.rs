@@ -1,7 +1,7 @@
 pub mod android_worker;
 
 use crate::queries;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 pub use queries::Push;
 
@@ -30,7 +30,7 @@ impl Default for DeliveryConfig {
     }
 }
 
-pub fn spawn_all(pool: SqlitePool, configuration: DeliveryConfig) {
+pub fn spawn_all(pool: PgPool, configuration: DeliveryConfig) {
     tokio::spawn({
         let pool = pool.clone();
         async move { queries::reset_stale(&pool).await }

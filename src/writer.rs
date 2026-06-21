@@ -1,5 +1,5 @@
 use crate::queries::{self, NewPush};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Notify, mpsc, oneshot};
@@ -9,7 +9,7 @@ pub struct PushCommand {
     pub acknowledgement: oneshot::Sender<()>,
 }
 
-pub fn spawn(mut receiver: mpsc::Receiver<PushCommand>, pool: SqlitePool, notify: Arc<Notify>) {
+pub fn spawn(mut receiver: mpsc::Receiver<PushCommand>, pool: PgPool, notify: Arc<Notify>) {
     tokio::spawn(async move {
         loop {
             let batch = collect(&mut receiver, 100, Duration::from_millis(5)).await;
@@ -50,7 +50,7 @@ async fn collect(
     batch
 }
 
-async fn flush(batch: &[PushCommand], pool: &SqlitePool) {
+async fn flush(batch: &[PushCommand], pool: &PgPool) {
     let payloads: Vec<&NewPush> = batch.iter().map(|c| &c.payload).collect();
     queries::insert_batch(&payloads, pool).await;
 }

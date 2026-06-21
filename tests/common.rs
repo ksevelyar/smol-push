@@ -4,23 +4,32 @@ use hyper::server::conn::http2::Builder;
 use hyper::service::service_fn;
 use hyper::{Request as HReq, Response, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use sqlx::SqlitePool;
-use uuid::Uuid;
+use sqlx::PgPool;
 
-pub async fn create_test_database() -> SqlitePool {
-    let path = std::env::temp_dir().join(format!("smol_push_{}.db", Uuid::new_v4()));
-    let url = format!("sqlite:{}?mode=rwc", path.display());
-    let pool = SqlitePool::connect(&url).await.unwrap();
-    sqlx::query("PRAGMA journal_mode = WAL;")
-        .execute(&pool)
+async fn recreate_database() -> PgPool {
+    let admin_pool = PgPool::connect("postgres://postgres:postgres@localhost:5432/postgres")
         .await
-        .unwrap();
-    sqlx::query("PRAGMA synchronous = NORMAL;")
-        .execute(&pool)
+        .expect("connect to admin pg");
+
+    sqlx::query("DROP DATABASE IF EXISTS smol_push_test WITH (FORCE)")
+        .execute(&admin_pool)
+        .await
+        .ok();
+    sqlx::query("CREATE DATABASE smol_push_test")
+        .execute(&admin_pool)
+        .await
+        .expect("create test db");
+    admin_pool.close().await;
+
+    let pool = PgPool::connect("postgres://postgres:postgres@localhost:5432/smol_push_test")
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
     pool
+}
+
+pub async fn create_test_database() -> PgPool {
+    recreate_database().await
 }
 
 #[allow(dead_code)]

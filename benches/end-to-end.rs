@@ -9,39 +9,21 @@ use hyper::service::service_fn;
 use hyper::{Response, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use smol_push::delivery::DeliveryConfig;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::time::Duration;
 use tokio::task::JoinSet;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 fn main() {
     divan::main();
 }
 
-async fn create_test_database() -> (SqlitePool, String) {
-    let path = std::env::temp_dir()
-        .join(format!("smol_push_{}.db", Uuid::new_v4()))
-        .to_string_lossy()
-        .to_string();
-    let url = format!("sqlite:{}?mode=rwc", path);
-    let pool = SqlitePool::connect(&url).await.unwrap();
-    sqlx::query("PRAGMA journal_mode = WAL;")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA synchronous = NORMAL;")
-        .execute(&pool)
-        .await
-        .unwrap();
+async fn create_test_database() -> PgPool {
+    let url = "postgres://postgres:postgres@localhost:5432/smol_push";
+    let pool = PgPool::connect(url).await.unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    (pool, path)
-}
-
-fn cleanup_database(path: &str) {
-    std::fs::remove_file(path).ok();
-    std::fs::remove_file(format!("{}-wal", path)).ok();
-    std::fs::remove_file(format!("{}-shm", path)).ok();
+    sqlx::query("DELETE FROM pushes").execute(&pool).await.unwrap();
+    pool
 }
 
 async fn spawn_mock_fcm(status: StatusCode) -> u16 {
@@ -74,13 +56,12 @@ async fn spawn_mock_fcm(status: StatusCode) -> u16 {
 
 #[divan::bench(sample_count = 10, args = [(1, 1000), (1, 10000), (1, 20000), (1, 50000), (2, 50000), (3, 50000)])]
 fn throughput(bencher: Bencher, &(max_connections, pushes_count): &(usize, usize)) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
     bencher
         .counter(ItemsCount::new(pushes_count))
         .bench_local(|| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                let (pool, db_path) = create_test_database().await;
+                let pool = create_test_database().await;
                 let monitor_pool = pool.clone();
 
                 let fcm_port = spawn_mock_fcm(StatusCode::OK).await;
@@ -137,8 +118,6 @@ fn throughput(bencher: Bencher, &(max_connections, pushes_count): &(usize, usize
 
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
-
-                cleanup_database(&db_path);
             });
         });
 }

@@ -12,7 +12,7 @@ use axum::{
 };
 use queries::{NewPush, Platform};
 use serde::Deserialize;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::{Notify, mpsc, oneshot};
 use writer::PushCommand;
@@ -38,7 +38,7 @@ pub fn app_from_state(state: Arc<AppState>) -> Router {
 }
 
 pub fn build_app(
-    pool: SqlitePool,
+    pool: PgPool,
     api_key: Option<String>,
     max_queued: usize,
     delivery_config: DeliveryConfig,

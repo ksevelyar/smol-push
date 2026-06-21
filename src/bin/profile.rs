@@ -6,13 +6,12 @@ use hyper::service::service_fn;
 use hyper::{Response, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use smol_push::delivery::DeliveryConfig;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 use tower::ServiceExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use uuid::Uuid;
 
 const PUSHES: usize = 10000;
 const MAX_CONNECTIONS: usize = 1;
@@ -33,7 +32,7 @@ async fn main() {
         )
         .init();
 
-    let (pool, db_path) = create_test_database().await;
+    let pool = create_test_database().await;
 
     let fcm_port = spawn_mock_fcm(StatusCode::OK).await;
 
@@ -97,33 +96,14 @@ async fn main() {
     println!("Delivered {PUSHES} pushes in {elapsed:?} ({:.1} K/s)", PUSHES as f64 / elapsed.as_secs_f64() / 1000.0);
 
     drop(guard);
-
-    cleanup_database(&db_path);
 }
 
-async fn create_test_database() -> (SqlitePool, String) {
-    let path = std::env::temp_dir()
-        .join(format!("smol_push_{}.db", Uuid::new_v4()))
-        .to_string_lossy()
-        .to_string();
-    let url = format!("sqlite:{}?mode=rwc", path);
-    let pool = SqlitePool::connect(&url).await.unwrap();
-    sqlx::query("PRAGMA journal_mode = WAL;")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA synchronous = NORMAL;")
-        .execute(&pool)
-        .await
-        .unwrap();
+async fn create_test_database() -> PgPool {
+    let url = "postgres://postgres:postgres@localhost:5432/smol_push";
+    let pool = PgPool::connect(url).await.unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    (pool, path)
-}
-
-fn cleanup_database(path: &str) {
-    std::fs::remove_file(path).ok();
-    std::fs::remove_file(format!("{}-wal", path)).ok();
-    std::fs::remove_file(format!("{}-shm", path)).ok();
+    sqlx::query("DELETE FROM pushes").execute(&pool).await.unwrap();
+    pool
 }
 
 async fn spawn_mock_fcm(status: StatusCode) -> u16 {

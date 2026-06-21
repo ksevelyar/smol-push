@@ -50,6 +50,7 @@
               '')
             ];
 
+            DATABASE_URL = "postgres://postgres:postgres@localhost:5432/smol_push";
             PUSH_API_KEY = "dev-key";
             ANDROID_API_KEY = "test-key";
             ANDROID_ADDRESS = "http://127.0.0.1:9099";

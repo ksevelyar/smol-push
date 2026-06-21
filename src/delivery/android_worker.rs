@@ -6,7 +6,7 @@ use http_body_util::Full;
 use hyper::Request;
 use hyper::client::conn::http2::Builder;
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -196,7 +196,7 @@ pub async fn send_notification(
 }
 
 pub fn spawn(
-    pool: SqlitePool,
+    pool: PgPool,
     config: DeliveryConfig,
     worker_id: usize,
 ) {
@@ -206,7 +206,7 @@ pub fn spawn(
 }
 
 async fn worker_loop(
-    pool: SqlitePool,
+    pool: PgPool,
     config: &DeliveryConfig,
     worker_id: usize,
 ) {
@@ -259,7 +259,7 @@ async fn worker_loop(
                 PushResult::Delivered => delivered.push(id),
                 PushResult::Fatal => dead.push(id),
                 PushResult::RecoverableError => {
-                    if retry_count >= config.max_retry_attempts {
+                    if retry_count >= config.max_retry_attempts as i32 {
                         dead.push(id);
                     } else {
                         let delay = retry_delay(
@@ -283,8 +283,8 @@ async fn worker_loop(
     }
 }
 
-fn retry_delay(retry_count: u8, base_milliseconds: u64, maximum_milliseconds: u64) -> Duration {
+fn retry_delay(retry_count: i32, base_milliseconds: u64, maximum_milliseconds: u64) -> Duration {
     Duration::from_millis(
-        base_milliseconds * 2u64.pow(retry_count.into()).min(maximum_milliseconds),
+        base_milliseconds * 2u64.pow(retry_count as u32).min(maximum_milliseconds),
     )
 }

@@ -15,12 +15,16 @@ async fn run_delivery_test(
     initial_retry_count: i32,
     max_retries: i32,
 ) {
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("trace"))
+        .try_init();
     let pool = common::create_test_database().await;
     let monitor_pool = pool.clone();
     if initial_retry_count > 0 {
         sqlx::query(
             "INSERT INTO pushes (id, platform, type, text, status, retry_count) \
-             VALUES ('t1', 1, 'info', 'hello', 0, ?)",
+             VALUES ('t1', 1, 'info', 'hello', 0, $1)",
         )
         .bind(initial_retry_count)
         .execute(&pool)
@@ -71,7 +75,7 @@ async fn run_delivery_test(
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some((status, retry)) =
-                sqlx::query_as::<_, (i32, i32)>("SELECT status, retry_count FROM pushes WHERE id = ?")
+                sqlx::query_as::<_, (i32, i32)>("SELECT status, retry_count FROM pushes WHERE id = $1")
                     .bind(&id)
                     .fetch_optional(&monitor_pool)
                     .await

@@ -1,4 +1,4 @@
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::{QueryBuilder, PgPool};
 
 
 #[derive(serde::Deserialize, sqlx::Type, Clone, Copy)]
@@ -27,7 +27,7 @@ pub struct Push {
     pub token: String,
     pub title: String,
     pub inserted_at: String,
-    pub retry_count: u8,
+    pub retry_count: i32,
     pub next_retry_at: Option<i64>,
     pub status: PushStatus,
 }
@@ -47,12 +47,12 @@ pub enum PushResult {
     RecoverableError,
 }
 
-pub async fn fetch_and_lock(pool: &SqlitePool, platform: Platform, limit: i32) -> Vec<Push> {
+pub async fn fetch_and_lock(pool: &PgPool, platform: Platform, limit: i32) -> Vec<Push> {
     sqlx::query_as::<_, Push>(
-        "UPDATE pushes SET status = ? WHERE id IN (\
-            SELECT id FROM pushes WHERE platform = ? AND status = ? \
-            AND (next_retry_at IS NULL OR next_retry_at <= CAST(strftime('%s', 'now') AS INTEGER) * 1000) \
-            ORDER BY inserted_at ASC LIMIT ?\
+        "UPDATE pushes SET status = $1 WHERE id IN (\
+            SELECT id FROM pushes WHERE platform = $2 AND status = $3 \
+            AND (next_retry_at IS NULL OR next_retry_at <= EXTRACT(EPOCH FROM NOW())::bigint * 1000) \
+            ORDER BY inserted_at ASC LIMIT $4\
         ) RETURNING *",
     )
     .bind(PushStatus::Dispatching)
@@ -64,8 +64,8 @@ pub async fn fetch_and_lock(pool: &SqlitePool, platform: Platform, limit: i32) -
     .unwrap_or_default()
 }
 
-pub async fn reset_stale(pool: &SqlitePool) {
-    if let Err(e) = sqlx::query("UPDATE pushes SET status = ? WHERE status = ?")
+pub async fn reset_stale(pool: &PgPool) {
+    if let Err(e) = sqlx::query("UPDATE pushes SET status = $1 WHERE status = $2")
         .bind(PushStatus::Pending)
         .bind(PushStatus::Dispatching)
         .execute(pool)
@@ -75,11 +75,11 @@ pub async fn reset_stale(pool: &SqlitePool) {
     }
 }
 
-pub async fn select_pending(pool: &SqlitePool, platform: Platform, limit: i32) -> Vec<Push> {
+pub async fn select_pending(pool: &PgPool, platform: Platform, limit: i32) -> Vec<Push> {
     sqlx::query_as::<_, Push>(
-        "SELECT * FROM pushes WHERE platform = ? AND status = ? \
-          AND (next_retry_at IS NULL OR next_retry_at <= CAST(strftime('%s', 'now') AS INTEGER)) \
-          ORDER BY inserted_at ASC LIMIT ?",
+        "SELECT * FROM pushes WHERE platform = $1 AND status = $2 \
+          AND (next_retry_at IS NULL OR next_retry_at <= EXTRACT(EPOCH FROM NOW())::bigint) \
+          ORDER BY inserted_at ASC LIMIT $3",
     )
     .bind(platform)
     .bind(PushStatus::Pending)
@@ -89,7 +89,7 @@ pub async fn select_pending(pool: &SqlitePool, platform: Platform, limit: i32) -
     .unwrap_or_default()
 }
 
-pub async fn bulk_mark_status(pool: &SqlitePool, ids: &[String], status: PushStatus) {
+pub async fn bulk_mark_status(pool: &PgPool, ids: &[String], status: PushStatus) {
     if ids.is_empty() {
         return;
     }
@@ -106,9 +106,9 @@ pub async fn bulk_mark_status(pool: &SqlitePool, ids: &[String], status: PushSta
     }
 }
 
-pub async fn schedule_retry(pool: &SqlitePool, id: &str, next_retry_at: i64) {
+pub async fn schedule_retry(pool: &PgPool, id: &str, next_retry_at: i64) {
     if let Err(e) = sqlx::query(
-        "UPDATE pushes SET status = ?, retry_count = retry_count + 1, next_retry_at = ? WHERE id = ?",
+        "UPDATE pushes SET status = $1, retry_count = retry_count + 1, next_retry_at = $2 WHERE id = $3",
     )
     .bind(PushStatus::Pending)
     .bind(next_retry_at)
@@ -120,7 +120,7 @@ pub async fn schedule_retry(pool: &SqlitePool, id: &str, next_retry_at: i64) {
     }
 }
 
-pub async fn insert_batch(batch: &[&NewPush], pool: &SqlitePool) {
+pub async fn insert_batch(batch: &[&NewPush], pool: &PgPool) {
     let mut builder =
         QueryBuilder::new("INSERT INTO pushes (id, platform, type, text, token, title) ");
 
@@ -138,9 +138,9 @@ pub async fn insert_batch(batch: &[&NewPush], pool: &SqlitePool) {
     }
 }
 
-pub async fn purge_old_pushes(pool: &SqlitePool) {
+pub async fn purge_old_pushes(pool: &PgPool) {
     if let Err(e) =
-        sqlx::query("DELETE FROM pushes WHERE inserted_at < datetime('now', '-30 minutes')")
+        sqlx::query("DELETE FROM pushes WHERE inserted_at < to_char(NOW() - INTERVAL '30 minutes', 'YYYY-MM-DD HH24:MI:SS')")
             .execute(pool)
             .await
     {
