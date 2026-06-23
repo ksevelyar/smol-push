@@ -1,7 +1,9 @@
 pub mod delivery;
 pub mod queries;
+pub mod utils;
 pub mod writer;
 
+use crate::delivery::DeliveryConfig;
 use axum::{
     Router,
     extract::{Json, State},
@@ -9,7 +11,6 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
-use delivery::DeliveryConfig;
 use queries::{NewPush, Platform};
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -46,9 +47,8 @@ pub fn build_app(
     let (writer_sender, writer_receiver) = mpsc::channel(max_queued.max(1));
     let notify = Arc::new(Notify::new());
 
-    writer::spawn(writer_receiver, pool.clone(), Arc::clone(&notify));
-
-    delivery::spawn(pool, notify, delivery_config);
+    writer::spawn(writer_receiver, pool.clone(), notify);
+    delivery::spawn_all(pool, delivery_config);
 
     let state = Arc::new(AppState {
         writer_sender,
